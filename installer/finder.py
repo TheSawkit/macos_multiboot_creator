@@ -14,6 +14,7 @@ from core.config import (
     MARGIN_SIZE_MB,
     TARGET_OS,
 )
+from locales import t
 from utils.size import calculate_size_with_margin, get_directory_size
 
 logger = logging.getLogger(__name__)
@@ -36,16 +37,16 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
     found = []
     app_path = Path(app_dir)
     logger.info(f"Recherche des installateurs dans {app_dir}...")
-    print(f"🔍 Recherche des installateurs dans {app_dir}...")
+    print(t("installer.search_installers", app_dir=app_dir))
 
     if not app_path.exists():
         logger.error(f"Le répertoire {app_dir} n'existe pas")
-        print(f"❌ Le répertoire {app_dir} n'existe pas.")
+        print(t("installer.dir_missing", app_dir=app_dir))
         sys.exit(1)
 
     if not app_path.is_dir():
         logger.error(f"{app_dir} n'est pas un répertoire")
-        print(f"❌ {app_dir} n'est pas un répertoire.")
+        print(t("installer.not_a_dir", app_dir=app_dir))
         sys.exit(1)
 
     for name, keyword, vol_name in TARGET_OS:
@@ -57,7 +58,7 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
             ]
         except PermissionError:
             logger.error(f"Permission refusée pour accéder à {app_dir}")
-            print(f"❌ Permission refusée pour accéder à {app_dir}")
+            print(t("installer.permission_denied", app_dir=app_dir))
             sys.exit(1)
 
         if not candidates:
@@ -69,7 +70,7 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
                 f"Utilisation du premier: {candidates[0].name}"
             )
             print(
-                f"⚠️ Plusieurs installateurs trouvés pour {name}, utilisation de: {candidates[0].name}"
+                t("installer.multiple_found", name=name, picked=candidates[0].name)
             )
 
         path = candidates[0]
@@ -82,7 +83,7 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
             logger.info(
                 f"Trouvé: {name} -> {path} ({size_gb:.2f} GB, {size_with_margin_gb:.2f} GB avec marge)"
             )
-            print(f"✅ Trouvé : {name}")
+            print(t("installer.found", name=name))
             found.append(
                 InstallerInfo(
                     name=name,
@@ -93,14 +94,12 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
             )
         else:
             logger.warning(f"Chemin invalide pour {name}: {path}")
-            print(f"   ⚠️  Chemin invalide pour {name}: {path}")
+            print(t("installer.invalid_path", name=name, path=path))
 
     if not found:
         logger.error("Aucun installateur trouvé")
-        print(
-            "❌ Aucun installateur trouvé. Utilisez 'Mist' pour les télécharger d'abord."
-        )
-        print("\n📥 Télécharger Mist : https://github.com/ninxsoft/Mist/releases")
+        print(t("installer.none_found"))
+        print(t("installer.download_mist"))
         sys.exit(1)
 
     return found
@@ -114,13 +113,19 @@ def display_size_summary(installers: List[InstallerInfo]) -> None:
         installers: Liste des installateurs trouvés
     """
     logger.info("Affichage du résumé des tailles")
-    print(f"\n📊 Résumé des tailles :")
+    print(t("installer.size_summary"))
     for inst in installers:
         size_gb = inst["size_bytes"] / BYTES_PER_GB
         size_with_margin = calculate_size_with_margin(inst["size_bytes"])
         size_with_margin_gb = size_with_margin / BYTES_PER_GB
         print(
-            f"   • {inst['name']}: {size_gb:.2f} GB (+ {MARGIN_SIZE_MB} MB marge = {size_with_margin_gb:.2f} GB)"
+            t(
+                "installer.size_summary_line",
+                name=inst["name"],
+                size_gb=size_gb,
+                margin_mb=MARGIN_SIZE_MB,
+                size_with_margin_gb=size_with_margin_gb,
+            )
         )
 
 

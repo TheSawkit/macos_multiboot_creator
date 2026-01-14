@@ -7,6 +7,7 @@ import re
 import sys
 from typing import Optional, Tuple
 
+from locales import t
 from utils.commands import (
     CommandError,
     CommandNotFoundError,
@@ -67,29 +68,31 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
             logger.error(
                 f"Le disque {target_disk} ne peut pas être démonté car il est utilisé par un processus"
             )
-            print(f"\n❌ Le disque {target_disk} ne peut pas être démonté.")
+            print(t("disk.unmount_fail", target_disk=target_disk))
 
             if process_name and process_id:
                 print(
-                    f"   Le processus '{process_name}' (PID: {process_id}) utilise le disque."
+                    t(
+                        "disk.proc_using",
+                        process_name=process_name,
+                        process_id=process_id,
+                    )
                 )
-                print(f"\n💡 Solutions possibles :")
-                print(f"   1. Fermez toutes les applications qui utilisent le disque")
-                print(f"   2. Fermez Finder si le disque y est ouvert")
-                print(f"   3. Éjectez le disque depuis Finder (⌘+E)")
-                print(f"   4. Tuez le processus manuellement : sudo kill {process_id}")
-                print(f"   5. Attendez quelques secondes et réessayez")
+                print(t("disk.solutions"))
+                print(t("disk.solution_1"))
+                print(t("disk.solution_2"))
+                print(t("disk.solution_3"))
+                print(t("disk.solution_4_kill", process_id=process_id))
+                print(t("disk.solution_5_wait"))
             else:
-                print(f"   Un processus utilise le disque.")
-                print(f"\n💡 Solutions possibles :")
-                print(f"   1. Fermez toutes les applications qui utilisent le disque")
-                print(f"   2. Fermez Finder si le disque y est ouvert")
-                print(f"   3. Éjectez le disque depuis Finder (⌘+E)")
+                print(t("disk.proc_using_generic"))
+                print(t("disk.solutions"))
+                print(t("disk.solution_1"))
+                print(t("disk.solution_2"))
+                print(t("disk.solution_3"))
 
-            print(
-                f"\n⚠️  Le partitionnement ne peut pas continuer tant que le disque est utilisé."
-            )
-            print(f"   Après avoir libéré le disque, relancez le script.")
+            print(t("disk.partitioning_blocked"))
+            print(t("disk.rerun_after_free"))
 
             raise CommandError(
                 ["diskutil", "unmountDisk", target_disk],
@@ -98,8 +101,8 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
             ) from e
 
         logger.warning(f"Impossible de démonter le disque {target_disk}: {e}")
-        print(f"\n⚠️  Avertissement : Impossible de démonter le disque {target_disk}")
-        print(f"   Le script continuera mais le partitionnement pourrait échouer.")
+        print(t("disk.unmount_warning", target_disk=target_disk))
+        print(t("disk.unmount_warning_more"))
 
 
 def verify_disk_safety(target_disk: str) -> None:
@@ -113,23 +116,19 @@ def verify_disk_safety(target_disk: str) -> None:
         disk_info = get_disk_info(target_disk)
         if disk_info.get("Internal", False):
             logger.warning(f"Le disque {target_disk} est marqué comme interne")
-            print(
-                f"⚠️ AVERTISSEMENT : Le disque {target_disk} est marqué comme interne."
-            )
-            print(
-                "   Assurez-vous qu'il ne s'agit pas de votre disque système principal."
-            )
+            print(t("disk.internal_warning", target_disk=target_disk))
+            print(t("disk.internal_warning_more"))
             confirm_internal = input(
-                "   Continuer quand même ? (tapez 'YES' pour confirmer) : "
+                t("disk.internal_confirm")
             )
             if confirm_internal != "YES":
                 logger.info("Opération annulée par l'utilisateur (disque interne)")
-                print("Annulé.")
+                print(t("common.cancelled"))
                 sys.exit(0)
     except (CommandError, CommandNotFoundError, PlistParseError) as e:
         logger.warning(f"Impossible de vérifier les informations du disque: {e}")
-        print(f"⚠️  Impossible de vérifier les informations du disque : {e}")
-        print("   Le script continuera mais soyez prudent.")
+        print(t("disk.cannot_check_disk_info", error=e))
+        print(t("disk.cannot_check_disk_info_more"))
 
 
 def confirm_disk_erasure(target_disk: str, num_partitions: int) -> bool:
@@ -143,12 +142,12 @@ def confirm_disk_erasure(target_disk: str, num_partitions: int) -> bool:
     Returns:
         True si l'utilisateur confirme, False sinon
     """
-    print(f"\n⚠️  ATTENTION : Le disque {target_disk} va être TOTALEMENT EFFACÉ.")
-    print(f"   Il sera partitionné en {num_partitions} volumes pour les installateurs.")
-    confirm = input("   Tapez 'YES' pour confirmer : ")
+    print(t("disk.erase_warning", target_disk=target_disk))
+    print(t("disk.erase_warning_more", num_partitions=num_partitions))
+    confirm = input(t("disk.erase_confirm"))
     if confirm != "YES":
         logger.info("Opération annulée par l'utilisateur")
-        print("Annulé.")
+        print(t("common.cancelled"))
         return False
     return True
 
@@ -171,20 +170,20 @@ def restore_disk(target_disk: str) -> None:
         restore_cmd = ["diskutil", "eraseDisk", "ExFAT", "USB_DISK", target_disk]
 
         progress_rules = [
-            ("unmounting", 10, "Démontage du disque..."),
-            ("unmount", 10, "Démontage du disque..."),
-            ("erasing", 20, "Suppression de la partition..."),
-            ("formatting", 40, "Formatage du disque..."),
-            ("creating", 60, "Création de la partition..."),
-            ("mounting", 80, "Montage du volume..."),
-            ("mount", 80, "Montage du volume..."),
-            ("finished", 100, "Terminé !"),
-            ("complete", 100, "Terminé !"),
+            ("unmounting", 10, t("progress.unmounting_disk")),
+            ("unmount", 10, t("progress.unmounting_disk")),
+            ("erasing", 20, t("progress.erasing_partition")),
+            ("formatting", 40, t("progress.formatting_disk")),
+            ("creating", 60, t("progress.creating_partition")),
+            ("mounting", 80, t("progress.mounting_volume")),
+            ("mount", 80, t("progress.mounting_volume")),
+            ("finished", 100, t("progress.done")),
+            ("complete", 100, t("progress.done")),
         ]
 
         process, output_lines, progress_bar = run_command_with_progress(
             restore_cmd,
-            "Restauration",
+            t("progress.restore"),
             progress_rules,
             time_estimate_seconds=30,
         )
@@ -200,10 +199,8 @@ def restore_disk(target_disk: str) -> None:
         if output_lines:
             logger.info(f"Sortie de eraseDisk: {' '.join(output_lines)}")
         logger.info(f"Disque {target_disk} restauré et reformaté en ExFAT avec succès")
-        print(f"\n✅ Disque restauré avec succès")
+        print(t("disk.restore_success"))
     except (CommandError, CommandNotFoundError) as e:
         logger.warning(f"Impossible de restaurer le disque {target_disk}: {e}")
-        print(f"⚠️  Impossible de restaurer le disque : {e}")
-        print(
-            f"Vous pouvez le faire manuellement avec : diskutil eraseDisk ExFAT <nom_du_disque> {target_disk}"
-        )
+        print(t("disk.restore_fail", error=e))
+        print(t("disk.restore_manual", target_disk=target_disk))

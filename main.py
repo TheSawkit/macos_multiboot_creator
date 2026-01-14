@@ -7,6 +7,7 @@ import logging
 import sys
 from typing import Callable, Optional
 
+from locales import init_i18n, t
 from core import parse_arguments, setup_logging
 from disk import (
     check_disk_space,
@@ -54,25 +55,24 @@ def _handle_error(
         cleanup_func: Fonction de nettoyage à appeler si nécessaire
     """
     logger.error(f"Erreur {error_type}: {error}")
-    print(f"\n❌ Erreur {error_type} : {error}")
+    print(t("main.error", error_type=error_type, error=error))
 
     if isinstance(error, CommandError) and error.stderr:
-        print(f"   Détails : {error.stderr}")
+        print(t("main.error_details", details=error.stderr))
 
     if partitioning_started:
         cleanup_func()
 
     if isinstance(error, InstallationError) and target_disk:
-        print("\n⚠️  Le disque peut être dans un état partiel.")
-        print(
-            "   Certaines partitions peuvent avoir été créées mais l'installation a échoué."
-        )
+        print(t("main.disk_partial_state"))
+        print(t("main.disk_partial_state_more"))
 
     handle_error_with_disk_info(error, target_disk)
 
 
 def main():
     """Fonction principale du script."""
+    init_i18n()
     args = parse_arguments()
     setup_logging(debug=args.debug)
     check_root_privileges()
@@ -88,9 +88,9 @@ def main():
             restore_disk(target_disk)
 
     try:
-        logger.info("Démarrage du script multiboot macOS")
+        logger.info(t("main.start"))
         installers = find_installers(app_dir=args.app_dir)
-        logger.info(f"{len(installers)} installateur(s) trouvé(s)")
+        logger.info(t("main.installers_found", count=len(installers)))
 
         disks = list_external_disks()
         target_disk = select_disk(disks)
@@ -110,11 +110,11 @@ def main():
         create_install_media(installers)
 
         logger.info("Création de la clé USB multiboot terminée avec succès")
-        print("\n✅ Terminé ! Votre clé USB Multiboot est prête.")
+        print(t("main.success"))
 
     except KeyboardInterrupt:
         logger.debug("Interruption par l'utilisateur (Ctrl+C)")
-        print("\n❌ Interruption par l'utilisateur (Ctrl+C)")
+        print(t("main.interrupted"))
         cleanup_disk_if_needed()
         handle_error_with_disk_info(None, target_disk)
         sys.exit(130)

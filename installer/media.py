@@ -15,6 +15,7 @@ from core.config import (
     MIN_VOLUME_SIZE_BYTES,
 )
 from disk.detection import find_volume_path, wait_for_volume
+from locales import t
 from utils.commands import read_remaining_output
 from utils.progress import run_command_with_progress
 
@@ -28,7 +29,7 @@ class InstallationError(Exception):
         self.installer_name = installer_name
         self.message = message
         super().__init__(
-            f"Erreur lors de l'installation de {installer_name}: {message}"
+            f"{installer_name}: {message}"
         )
 
 
@@ -99,9 +100,13 @@ def _verify_installation_success(vol_path: Path) -> bool:
                 f"Attendu au moins {min_size_mb} MB. Fichiers: {items}"
             )
             print(
-                f"   ❌ Volume trop petit : {total_size / (1024*1024):.1f} MB (attendu au moins {min_size_mb} MB)"
+                t(
+                    "install_media.volume_too_small",
+                    size_mb=(total_size / (1024 * 1024)),
+                    min_mb=min_size_mb,
+                )
             )
-            print(f"   Fichiers présents : {items}")
+            print(t("install_media.files_present", items=items))
             return False
 
         logger.warning(
@@ -121,8 +126,8 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
         installers: Liste des installateurs à installer
     """
     logger.info("Début de la création des médias d'installation")
-    print("\n🚀 Création des médias d'installation...")
-    print(f"⏳ Cela peut prendre 10-30 minutes selon la version de macOS")
+    print(t("install_media.creating"))
+    print(t("install_media.duration_hint"))
 
     for inst in installers:
         app_path = Path(inst["path"])
@@ -131,8 +136,8 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
         if not create_media_tool.exists():
             error_msg = f"Outil createinstallmedia introuvable: {create_media_tool}"
             logger.error(f"{error_msg} pour {inst['name']}")
-            print(f"❌ Outil createinstallmedia introuvable pour {inst['name']}")
-            print(f"   Chemin attendu : {create_media_tool}")
+            print(t("install_media.tool_missing", name=inst["name"]))
+            print(t("install_media.tool_expected", path=create_media_tool))
             raise InstallationError(inst["name"], error_msg)
 
         try:
@@ -140,24 +145,26 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
             if not (stat_info.st_mode & EXECUTABLE_PERMISSIONS):
                 error_msg = "Outil createinstallmedia non exécutable"
                 logger.error(f"{error_msg} pour {inst['name']}")
-                print(
-                    f"❌ L'outil createinstallmedia n'est pas exécutable pour {inst['name']}"
-                )
+                print(t("install_media.tool_not_executable", name=inst["name"]))
                 raise InstallationError(inst["name"], error_msg)
         except OSError:
             error_msg = "Impossible de vérifier les permissions de createinstallmedia"
             logger.error(f"{error_msg} pour {inst['name']}")
-            print(f"❌ {error_msg} pour {inst['name']}")
+            print(t("install_media.permission_check_fail", name=inst["name"]))
             raise InstallationError(inst["name"], error_msg)
 
         logger.info(f"Installation de {inst['name']} sur {inst['volume']}...")
-        print(f"\n Installation de {inst['name']}...")
+        print(t("install_media.installing", name=inst["name"]))
 
         if not wait_for_volume(inst["volume"]):
             error_msg = f"Timeout: le volume {inst['volume']} n'est pas monté après {MAX_VOLUME_WAIT_TIME}s"
             logger.error(f"{error_msg} pour {inst['name']}")
             print(
-                f"❌ Timeout : Le volume {inst['volume']} n'est pas monté après {MAX_VOLUME_WAIT_TIME}s"
+                t(
+                    "install_media.timeout_volume",
+                    volume=inst["volume"],
+                    seconds=MAX_VOLUME_WAIT_TIME,
+                )
             )
             raise InstallationError(inst["name"], error_msg)
 
@@ -165,15 +172,16 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
             vol_path = find_volume_path(inst["volume"], inst["name"])
             logger.info(f"Volume réel trouvé: {vol_path}")
         except FileNotFoundError as e:
-            error_msg = f"Volume non trouvé: {e}"
+            # On évite d'exposer des messages exceptions "bruts" (potentiellement EN/techniques)
+            error_msg = t("install_media.volume_not_found", expected=inst["volume"])
             logger.error(f"{error_msg} pour {inst['name']}")
-            print(f"❌ {error_msg} pour {inst['name']}")
+            print(t("install_media.error_for_installer", msg=error_msg, name=inst["name"]))
             raise InstallationError(inst["name"], error_msg)
 
         if not vol_path.exists() or not vol_path.is_dir():
             error_msg = f"Le volume {vol_path} n'est pas accessible"
             logger.error(f"{error_msg} pour {inst['name']}")
-            print(f"❌ {error_msg} pour {inst['name']}")
+            print(t("install_media.volume_not_accessible", vol_path=vol_path, name=inst["name"]))
             raise InstallationError(inst["name"], error_msg)
 
         flash_cmd = [
@@ -188,22 +196,22 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
         logger.info(f"Exécution de createinstallmedia pour {inst['name']}")
 
         progress_rules = [
-            ("erasing", 5, "Effacement du volume..."),
-            ("formatting", 5, "Effacement du volume..."),
-            ("copying", 20, "Copie des fichiers..."),
-            ("install", 40, "Installation en cours..."),
-            ("base system", 60, "Installation du système de base..."),
-            ("basesystem", 60, "Installation du système de base..."),
-            ("packages", 75, "Installation des packages..."),
-            ("complete", 100, "Terminé !"),
-            ("done", 100, "Terminé !"),
-            ("success", 100, "Terminé !"),
+            ("erasing", 5, t("progress.erasing_volume")),
+            ("formatting", 5, t("progress.erasing_volume")),
+            ("copying", 20, t("progress.copying_files")),
+            ("install", 40, t("progress.installing")),
+            ("base system", 60, t("progress.installing_base_system")),
+            ("basesystem", 60, t("progress.installing_base_system")),
+            ("packages", 75, t("progress.installing_packages")),
+            ("complete", 100, t("progress.done")),
+            ("done", 100, t("progress.done")),
+            ("success", 100, t("progress.done")),
         ]
 
         try:
             process, output_lines, progress_bar = run_command_with_progress(
                 flash_cmd,
-                "Installation",
+                t("progress.installation"),
                 progress_rules,
                 time_estimate_seconds=1200,
             )
@@ -270,38 +278,35 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
                         if vol_path.exists()
                         else []
                     )
-                    error_msg = f"L'installation semble avoir échoué : aucun fichier d'installation valide trouvé sur le volume"
+                    error_msg = t("install_media.seems_failed")
                     logger.error(f"{error_msg} pour {inst['name']}")
-                    print(f"❌ {error_msg} pour {inst['name']}")
+                    print(t("install_media.error_for_installer", msg=error_msg, name=inst["name"]))
                     print(
-                        f"   Contenu actuel du volume : {actual_items if actual_items else 'VIDE'}"
+                        t(
+                            "install_media.current_content",
+                            content=(actual_items if actual_items else t("common.empty")),
+                        )
                     )
-                    print(f"   Chemin du volume : {vol_path}")
-                    print(f"   Vérifiez manuellement avec : ls -la {vol_path}")
+                    print(t("install_media.volume_path", path=vol_path))
+                    print(t("install_media.check_manually", path=vol_path))
                     raise InstallationError(inst["name"], error_msg)
                 except Exception as e:
                     error_msg = f"Impossible de vérifier le contenu du volume : {e}"
                     logger.error(f"{error_msg} pour {inst['name']}")
-                    print(f"❌ {error_msg} pour {inst['name']}")
+                    print(t("install_media.error_for_installer", msg=error_msg, name=inst["name"]))
                     raise InstallationError(inst["name"], error_msg)
 
             logger.info(f"{inst['name']} installé avec succès pour {inst['volume']}")
-            print(f"✅ {inst['name']} installé avec succès")
+            print(t("install_media.success", name=inst["name"]))
         except subprocess.CalledProcessError as e:
             error_output = "\n".join(output_lines) if output_lines else ""
             error_msg = f"Code de retour {e.returncode}"
 
             if e.returncode == -9:
                 error_msg += " (SIGKILL - processus tué)"
-                help_msg = (
-                    "\n   💡 Causes possibles :\n"
-                    "      • Espace disque insuffisant sur la partition\n"
-                    "      • Volume corrompu ou inaccessible\n"
-                    "      • Problème de permissions\n"
-                    "      • Le processus a été interrompu par le système"
-                )
+                help_msg = t("install_media.sigkill_help")
             elif e.returncode == 1:
-                help_msg = "\n   💡 Vérifiez que le volume est correctement monté et accessible"
+                help_msg = t("install_media.check_mounted_help")
             else:
                 help_msg = ""
 
@@ -309,10 +314,10 @@ def create_install_media(installers: List[InstallerInfo]) -> None:
                 error_msg += f": {error_output}"
 
             logger.error(f"Échec de l'installation de {inst['name']}: {error_msg}")
-            print(f"❌ Échec de l'installation de {inst['name']}")
-            print(f"   Code de retour : {e.returncode}")
+            print(t("install_media.fail", name=inst["name"]))
+            print(t("install_media.return_code", code=e.returncode))
             if help_msg:
                 print(help_msg)
             if error_output:
-                print(f"   Erreur : {error_output}")
+                print(t("install_media.error_output", error_output=error_output))
             raise InstallationError(inst["name"], error_msg) from e

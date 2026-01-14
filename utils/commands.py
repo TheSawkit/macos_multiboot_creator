@@ -8,6 +8,8 @@ import subprocess
 import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from locales import t
+
 
 class CommandError(Exception):
     """Exception levée lorsqu'une commande shell échoue."""
@@ -38,7 +40,7 @@ class PlistParseError(Exception):
 def prompt_with_retry(
     prompt_text: str,
     validator: Callable[[str], Tuple[bool, Any]],
-    error_message: str = "Choix invalide.",
+    error_message: Optional[str] = None,
     max_retries: int = 3,
 ) -> Any:
     """
@@ -62,11 +64,12 @@ def prompt_with_retry(
             success, value = validator(choice)
             if success:
                 return value
-            print(error_message)
+            print(error_message or t("utils.invalid_choice"))
         except (ValueError, TypeError) as e:
-            print(f"{error_message} ({e})")
+            base = error_message or t("utils.invalid_choice")
+            print(f"{base} ({e})")
 
-    print(f"❌ Trop de tentatives échouées. Arrêt.")
+    print(t("utils.too_many_attempts"))
     sys.exit(1)
 
 
@@ -138,8 +141,8 @@ def check_root_privileges() -> None:
     logger = logging.getLogger(__name__)
     if os.geteuid() != 0:
         logger.error("Le script doit être lancé avec sudo")
-        print("🔒 Ce script doit être lancé avec 'sudo'.")
-        print("Exemple : sudo python3 main.py [--debug]\n")
+        print(t("utils.need_sudo_line1"))
+        print(t("utils.need_sudo_line2"))
         sys.exit(1)
 
 
@@ -154,10 +157,10 @@ def handle_error_with_disk_info(
         target_disk: Chemin du disque (peut être None si pas encore sélectionné)
     """
     if target_disk:
-        print(f"⚠️  Le disque {target_disk} peut être dans un état partiel.")
-        print(f"   Vérifiez l'état avec : diskutil list {target_disk}")
+        print(t("utils.disk_partial", target_disk=target_disk))
+        print(t("utils.check_disk_state", target_disk=target_disk))
     else:
-        print("⚠️  Vérifiez l'état avec : diskutil list")
+        print(t("utils.check_disk_state_generic"))
 
 
 def read_remaining_output(

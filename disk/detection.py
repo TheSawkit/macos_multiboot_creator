@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from core.config import BYTES_PER_GB, MAX_VOLUME_WAIT_TIME
+from locales import t
 from utils.commands import (
     CommandError,
     CommandNotFoundError,
@@ -35,7 +36,7 @@ def list_external_disks() -> List[Tuple[str, str]]:
         data = parse_plist(output)
     except (CommandError, CommandNotFoundError, PlistParseError) as e:
         logger.error(f"Erreur lors de la recherche des disques: {e}")
-        print(f"❌ Erreur lors de la recherche des disques : {e}")
+        print(t("disk.search_error", error=e))
         sys.exit(1)
 
     external_disks = []
@@ -94,10 +95,10 @@ def select_disk(disks: List[Tuple[str, str]]) -> str:
     """
     if not disks:
         logger.error("Aucun disque externe détecté")
-        print("❌ Aucun disque externe détecté.")
+        print(t("disk.none_detected"))
         sys.exit(1)
 
-    print("\n📀 Disques disponibles :")
+    print(t("disk.available_disks"))
     for i, (dev, desc) in enumerate(disks):
         print(f"   [{i+1}] {dev} - {desc}")
 
@@ -112,9 +113,9 @@ def select_disk(disks: List[Tuple[str, str]]) -> str:
             return False, ""
 
     target_disk = prompt_with_retry(
-        f"\n👉 Choisissez le disque cible (1-{len(disks)}) : ",
+        t("disk.pick_target", max=len(disks)),
         validate_choice,
-        "Choix invalide. Veuillez entrer un nombre entre 1 et " + str(len(disks)),
+        t("disk.invalid_range", max=len(disks)),
     )
     logger.info(f"Disque sélectionné: {target_disk}")
     return target_disk
@@ -156,18 +157,16 @@ def check_disk_space(target_disk: str, needed_bytes: int) -> None:
             logger.warning(
                 f"Espace disque insuffisant: {disk_size_gb:.1f} GB disponible, {needed_gb:.1f} GB nécessaire"
             )
-            print(f"\n⚠️  AVERTISSEMENT : Le disque fait {disk_size_gb:.1f} GB")
-            print(f"Espace nécessaire : {needed_gb:.1f} GB")
-            print(
-                f"Le script continuera mais pourrait échouer si l'espace est insuffisant."
-            )
+            print(t("disk.warning_small", size_gb=disk_size_gb))
+            print(t("disk.space_needed", needed_gb=needed_gb))
+            print(t("disk.space_continue_may_fail"))
         else:
             logger.info(
                 f"Espace disque suffisant: {disk_size_gb:.1f} GB disponible, {needed_gb:.1f} GB nécessaire"
             )
-            print(f"\nEspace disponible : {disk_size_gb:.1f} GB")
-            print(f"Espace nécessaire : {needed_gb:.1f} GB")
-            print(f"Espace restant : {disk_size_gb - needed_gb:.1f} GB")
+            print(t("disk.space_available", size_gb=disk_size_gb))
+            print(t("disk.space_needed", needed_gb=needed_gb))
+            print(t("disk.space_remaining", remaining_gb=(disk_size_gb - needed_gb)))
     except (
         KeyError,
         ValueError,
@@ -177,8 +176,8 @@ def check_disk_space(target_disk: str, needed_bytes: int) -> None:
         PlistParseError,
     ) as e:
         logger.warning(f"Impossible de vérifier l'espace disque: {e}")
-        print(f"⚠️  Impossible de vérifier l'espace disque : {e}")
-        print("Le script continuera mais l'espace pourrait être insuffisant.")
+        print(t("disk.cannot_check_space", error=e))
+        print(t("disk.space_may_be_insufficient"))
 
 
 def find_volume_path(expected_name: str, installer_name: str) -> Path:
@@ -204,7 +203,7 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
     volumes_dir = Path("/Volumes")
 
     if not volumes_dir.exists():
-        raise FileNotFoundError(f"Le répertoire /Volumes n'existe pas")
+        raise FileNotFoundError("/Volumes")
 
     keywords = installer_name.lower().split()
 
@@ -228,7 +227,7 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
                     return vol_path
 
     raise FileNotFoundError(
-        f"Volume non trouvé pour {installer_name} (nom attendu: {expected_name})"
+        f"{installer_name} (expected: {expected_name})"
     )
 
 

@@ -6,6 +6,7 @@ import logging
 from typing import List
 
 from core.config import BYTES_PER_GB, BYTES_PER_MB, InstallerInfo
+from locales import t
 from utils.commands import CommandError, CommandNotFoundError, read_remaining_output
 from utils.progress import run_command_with_progress
 from utils.size import (
@@ -75,7 +76,7 @@ def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
         ValueError: Si les tailles de partitions sont invalides
     """
     logger.info(f"Début du partitionnement du disque {target_disk}")
-    print("\n🔨 Partitionnement du disque...")
+    print(t("disk.partitioning"))
 
     validate_partition_sizes(target_disk, installers)
 
@@ -111,38 +112,44 @@ def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
                 logger.info(
                     f"{inst['name']}: dernière partition (espace restant: {remaining_size_str})"
                 )
-                print(f"   📦 {inst['name']}: partition de {remaining_size_str}")
+                print(
+                    t(
+                        "disk.partition_last_remaining",
+                        name=inst["name"],
+                        remaining=remaining_size_str,
+                    )
+                )
             else:
                 logger.info(
                     f"{inst['name']}: dernière partition (prend tout l'espace restant)"
                 )
-                print(f"   📦 {inst['name']}: partition (prend tout l'espace restant)")
+                print(t("disk.partition_last_all", name=inst["name"]))
         else:
             partition_size = format_size_for_diskutil(inst["size_bytes"])
             partition_cmd.append(partition_size)
             logger.info(f"{inst['name']}: partition de {partition_size}")
-            print(f"   📦 {inst['name']}: partition de {partition_size}")
+            print(t("disk.partition_size", name=inst["name"], size=partition_size))
 
     logger.info(
         f"Exécution de la commande de partitionnement: {' '.join(partition_cmd)}"
     )
 
     progress_rules = [
-        ("unmounting", 10, "Démontage du disque..."),
-        ("unmount", 10, "Démontage du disque..."),
-        ("creating partition", 20, "Création de la table de partition..."),
-        ("waiting for partitions to activate", 40, "Activation des partitions..."),
-        ("formatting", 60, "Formatage des partitions..."),
-        ("mounting", 80, "Montage des volumes..."),
-        ("mount", 80, "Montage des volumes..."),
-        ("finished", 100, "Terminé !"),
-        ("complete", 100, "Terminé !"),
+        ("unmounting", 10, t("progress.unmounting_disk")),
+        ("unmount", 10, t("progress.unmounting_disk")),
+        ("creating partition", 20, t("progress.creating_partition_table")),
+        ("waiting for partitions to activate", 40, t("progress.waiting_partitions")),
+        ("formatting", 60, t("progress.formatting_partitions")),
+        ("mounting", 80, t("progress.mounting_volumes")),
+        ("mount", 80, t("progress.mounting_volumes")),
+        ("finished", 100, t("progress.done")),
+        ("complete", 100, t("progress.done")),
     ]
 
     try:
         process, output_lines, progress_bar = run_command_with_progress(
             partition_cmd,
-            "Partitionnement",
+            t("progress.partitioning"),
             progress_rules,
             time_estimate_seconds=60,
         )
@@ -166,28 +173,28 @@ def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
                 logger.error(
                     f"Échec du partitionnement: le disque est utilisé par un processus"
                 )
-                print(
-                    f"\n❌ Échec du partitionnement : le disque {target_disk} est utilisé par un processus"
-                )
+                print(t("disk.partition_fail_in_use", target_disk=target_disk))
 
                 if process_name and process_id:
                     print(
-                        f"   Le processus '{process_name}' (PID: {process_id}) utilise le disque."
+                        t(
+                            "disk.proc_using",
+                            process_name=process_name,
+                            process_id=process_id,
+                        )
                     )
 
-                print(f"\n💡 Solutions possibles :")
-                print(f"   1. Fermez toutes les applications qui utilisent le disque")
-                print(f"   2. Fermez Finder si le disque y est ouvert")
-                print(f"   3. Éjectez le disque depuis Finder (⌘+E)")
+                print(t("disk.solutions"))
+                print(t("disk.solution_1"))
+                print(t("disk.solution_2"))
+                print(t("disk.solution_3"))
                 if process_name and process_id:
                     print(
-                        f"   4. Tuez le processus manuellement : sudo kill {process_id}"
+                        t("disk.solution_4_kill", process_id=process_id)
                     )
-                print(f"   5. Attendez quelques secondes et réessayez")
-                print(
-                    f"\n⚠️  Le partitionnement ne peut pas continuer tant que le disque est utilisé."
-                )
-                print(f"   Après avoir libéré le disque, relancez le script.")
+                print(t("disk.solution_5_wait"))
+                print(t("disk.partitioning_blocked"))
+                print(t("disk.rerun_after_free"))
 
             raise CommandError(partition_cmd, process.returncode, error_output)
 
@@ -202,9 +209,9 @@ def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
 
         if not error_already_displayed:
             logger.error(f"Échec du partitionnement: {e}")
-            print(f"❌ Échec du partitionnement : {e}")
+            print(t("disk.partition_fail", error=e))
             if isinstance(e, CommandError) and e.stderr:
-                print(f"   Erreur : {e.stderr}")
+                print(t("disk.partition_error_details", details=e.stderr))
         else:
             logger.error(f"Échec du partitionnement: {e}")
         raise

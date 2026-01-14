@@ -4,6 +4,7 @@ Gestion de la ligne de commande (CLI) pour le script multiboot macOS.
 import argparse
 
 from .config import APP_DIR
+from locales import t
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -14,18 +15,18 @@ def parse_arguments() -> argparse.Namespace:
         Namespace contenant les arguments parsés
     """
     parser = argparse.ArgumentParser(
-        description="Créer une clé USB multiboot pour macOS",
+        description=t("cli.description"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Active le mode debug avec affichage des logs détaillés",
+        help=t("cli.debug_help"),
     )
     parser.add_argument(
         "--app-dir",
         type=str,
         default=APP_DIR,
-        help=f"Répertoire où chercher les installateurs macOS (par défaut: {APP_DIR})",
+        help=t("cli.app_dir_help", app_dir=APP_DIR),
     )
     return parser.parse_args()
