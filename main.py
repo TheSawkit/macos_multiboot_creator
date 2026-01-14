@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Script pour créer une clé USB multiboot macOS.
+Permet d'installer plusieurs versions de macOS sur un seul disque externe.
+"""
+import logging
+import sys
+from typing import Callable, Optional
+
+from core import parse_arguments, setup_logging
+from disk import (
+    check_disk_space,
+    confirm_disk_erasure,
+    list_external_disks,
+    partition_disk,
+    restore_disk,
+    select_disk,
+    unmount_disk,
+    verify_disk_safety,
+)
+from installer import (
+    InstallationError,
+    calculate_total_space_needed,
+    create_install_media,
+    display_size_summary,
+    find_installers,
+)
+from utils import (
+    CommandError,
+    CommandNotFoundError,
+    PlistParseError,
+    check_root_privileges,
+    handle_error_with_disk_info,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _handle_error(
+    error: Exception,
+    error_type: str,
+    target_disk: Optional[str],
+    partitioning_started: bool,
+    cleanup_func: Callable[[], None],
+) -> None:
+    """
+    Gère les erreurs de manière centralisée.
+
+    Args:
+        error: L'exception qui s'est produite
+        error_type: Type d'erreur pour le message
+        target_disk: Chemin du disque cible (peut être None)
+        partitioning_started: Si True, le partitionnement a commencé
+        cleanup_func: Fonction de nettoyage à appeler si nécessaire
+    """
+    logger.error(f"Erreur {error_type}: {error}")
+    print(f"\n❌ Erreur {error_type} : {error}")
+
+    if isinstance(error, CommandError) and error.stderr:
+        print(f"   Détails : {error.stderr}")
+
+    if partitioning_started:
+        cleanup_func()
+
+    if isinstance(error, InstallationError) and target_disk:
+        print("\n⚠️  Le disque peut être dans un état partiel.")
+        print(
+            "   Certaines partitions peuvent avoir été créées mais l'installation a échoué."
+        )
+
+    handle_error_with_disk_info(error, target_disk)
+
+
+def main():
+    """Fonction principale du script."""
+    args = parse_arguments()
+    setup_logging(debug=args.debug)
+    check_root_privileges()
+
+    target_disk: Optional[str] = None
+    installers = []
+    partitioning_started = False
+
+    def cleanup_disk_if_needed():
+        """Nettoie le disque si le partitionnement a commencé."""
+        if partitioning_started and target_disk:
+            logger.info(f"Nettoyage du disque {target_disk} en cours...")
+            restore_disk(target_disk)
+
+    try:
+        logger.info("Démarrage du script multiboot macOS")
+        installers = find_installers(app_dir=args.app_dir)
+        logger.info(f"{len(installers)} installateur(s) trouvé(s)")
+
+        disks = list_external_disks()
+        target_disk = select_disk(disks)
+        verify_disk_safety(target_disk)
+
+        total_needed_bytes = calculate_total_space_needed(installers)
+        display_size_summary(installers)
+        check_disk_space(target_disk, total_needed_bytes)
+
+        if not confirm_disk_erasure(target_disk, len(installers)):
+            sys.exit(0)
+
+        unmount_disk(target_disk)
+        partitioning_started = True
+
+        partition_disk(target_disk, installers)
+        create_install_media(installers)
+
+        logger.info("Création de la clé USB multiboot terminée avec succès")
+        print("\n✅ Terminé ! Votre clé USB Multiboot est prête.")
+
+    except KeyboardInterrupt:
+        logger.debug("Interruption par l'utilisateur (Ctrl+C)")
+        print("\n❌ Interruption par l'utilisateur (Ctrl+C)")
+        cleanup_disk_if_needed()
+        handle_error_with_disk_info(None, target_disk)
+        sys.exit(130)
+    except (CommandError, CommandNotFoundError) as e:
+        _handle_error(
+            e, "de commande", target_disk, partitioning_started, cleanup_disk_if_needed
+        )
+        sys.exit(1)
+    except PlistParseError as e:
+        _handle_error(
+            e,
+            "de parsing PLIST",
+            target_disk,
+            partitioning_started,
+            cleanup_disk_if_needed,
+        )
+        sys.exit(1)
+    except ValueError as e:
+        _handle_error(
+            e,
+            "de validation",
+            target_disk,
+            partitioning_started,
+            cleanup_disk_if_needed,
+        )
+        sys.exit(1)
+    except InstallationError as e:
+        _handle_error(
+            e,
+            "d'installation",
+            target_disk,
+            partitioning_started,
+            cleanup_disk_if_needed,
+        )
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Erreur inattendue: {e}", exc_info=True)
+        _handle_error(
+            e, "inattendue", target_disk, partitioning_started, cleanup_disk_if_needed
+        )
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
