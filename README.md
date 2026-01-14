@@ -33,11 +33,12 @@ sudo python3 main.py
 
 ### Options
 
+- Mode debug (logs détaillés)
 ```bash
-# Mode debug (logs détaillés)
 sudo python3 main.py --debug
-
-# Spécifier un autre répertoire pour les installateurs
+```
+- Spécifier un autre répertoire pour les installateurs
+```bash
 sudo python3 main.py --app-dir /chemin/vers/installateurs
 ```
 
@@ -60,4 +61,4 @@ sudo python3 main.py --app-dir /chemin/vers/installateurs
 
 ---
 
-**Créé par SAWKIT avec ❤️**
+*Développé avec ❤️ par [SAWKIT](https://github.com/gitsawkit)*
