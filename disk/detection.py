@@ -3,6 +3,7 @@ Détection et sélection des disques externes.
 """
 
 import logging
+import shutil
 import subprocess
 import sys
 import time
@@ -20,6 +21,7 @@ from utils.commands import (
     run_command,
 )
 
+DISKUTIL_PATH = shutil.which("diskutil") or "diskutil"
 logger = logging.getLogger(__name__)
 
 
@@ -277,7 +279,7 @@ def _is_volume_mounted(vol_path: Path, volume_name: str) -> bool:
             return False
 
         result = subprocess.run(
-            ["diskutil", "info", str(target_path)],
+            [DISKUTIL_PATH, "info", str(target_path)],
             capture_output=True,
             text=True,
             timeout=5,
