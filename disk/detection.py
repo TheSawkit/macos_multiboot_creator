@@ -226,9 +226,7 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
                     logger.info(f"Volume trouvé par mots-clés: {vol_path}")
                     return vol_path
 
-    raise FileNotFoundError(
-        f"{installer_name} (expected: {expected_name})"
-    )
+    raise FileNotFoundError(f"{installer_name} (expected: {expected_name})")
 
 
 def wait_for_volume(volume_name: str, max_wait: int = MAX_VOLUME_WAIT_TIME) -> bool:
@@ -273,11 +271,13 @@ def _is_volume_mounted(vol_path: Path, volume_name: str) -> bool:
         True si le volume est monté et accessible
     """
     try:
-        if not (vol_path.is_dir() and vol_path.exists()):
+        target_path = vol_path.resolve()
+
+        if not (target_path.is_dir() and target_path.exists()):
             return False
 
         result = subprocess.run(
-            ["diskutil", "info", str(vol_path)],
+            ["diskutil", "info", str(target_path)],
             capture_output=True,
             text=True,
             timeout=5,

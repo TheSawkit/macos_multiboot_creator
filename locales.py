@@ -20,7 +20,7 @@ def detect_system_language() -> Language:
     """
     Détecte la langue système via les variables d'environnement
     """
-    for env_var in ("LC_ALL", "LC_MESSAGE", "LANG"):
+    for env_var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         lang = os.environ.get(env_var)
         if lang:
             lang = lang.lower()
