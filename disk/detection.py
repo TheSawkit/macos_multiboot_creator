@@ -37,7 +37,6 @@ def list_external_disks() -> List[Tuple[str, str]]:
         output = run_command([DISKUTIL_PATH, "list", "-plist"])
         data = parse_plist(output)
     except (CommandError, CommandNotFoundError, PlistParseError) as e:
-        logger.error(f"Erreur lors de la recherche des disques: {e}")
         print(t("disk.search_error", error=e))
         sys.exit(1)
 
@@ -96,7 +95,6 @@ def select_disk(disks: List[Tuple[str, str]]) -> str:
         SystemExit: Si aucun disque disponible ou choix invalide
     """
     if not disks:
-        logger.error("Aucun disque externe détecté")
         print(t("disk.none_detected"))
         sys.exit(1)
 
@@ -156,16 +154,10 @@ def check_disk_space(target_disk: str, needed_bytes: int) -> None:
         needed_gb = needed_bytes / BYTES_PER_GB
 
         if disk_size_gb < needed_gb:
-            logger.warning(
-                f"Espace disque insuffisant: {disk_size_gb:.1f} GB disponible, {needed_gb:.1f} GB nécessaire"
-            )
             print(t("disk.warning_small", size_gb=disk_size_gb))
             print(t("disk.space_needed", needed_gb=needed_gb))
             print(t("disk.space_continue_may_fail"))
         else:
-            logger.info(
-                f"Espace disque suffisant: {disk_size_gb:.1f} GB disponible, {needed_gb:.1f} GB nécessaire"
-            )
             print(t("disk.space_available", size_gb=disk_size_gb))
             print(t("disk.space_needed", needed_gb=needed_gb))
             print(t("disk.space_remaining", remaining_gb=(disk_size_gb - needed_gb)))
@@ -177,7 +169,6 @@ def check_disk_space(target_disk: str, needed_bytes: int) -> None:
         CommandNotFoundError,
         PlistParseError,
     ) as e:
-        logger.warning(f"Impossible de vérifier l'espace disque: {e}")
         print(t("disk.cannot_check_space", error=e))
         print(t("disk.space_may_be_insufficient"))
 

@@ -2,6 +2,7 @@
 Gestion de la création des médias d'installation.
 """
 
+from gettext import install
 import logging
 import subprocess
 import time
@@ -43,25 +44,21 @@ def _verify_installation_success(vol_path: Path) -> bool:
     Returns:
         True si l'installation semble valide, False sinon
     """
-    # Phase 1: Validité basique du volume
     if not _is_volume_accessible(vol_path):
         return False
 
-    # Phase 2: Récupération du contenu
     items = _get_volume_items(vol_path)
-    if items is None:  # Erreur de lecture
+    if items is None:
         return False
 
-    if not items:  # Volume vide
-        logger.warning(f"Le volume {vol_path} est vide")
+    if not items:
+        logger.warning(t("install_media.volume_empty"))
         return False
 
-    # Phase 3: Vérification par fichiers attendus (méthode préférée)
     if _has_expected_installation_files(items):
-        logger.debug(f"Installation valide détectée sur {vol_path} (fichiers reconnus)")
+        logger.debug(t("install_media.seems_success"))
         return True
 
-    # Phase 4: Vérification par taille (fallback)
     return _verify_by_volume_size(vol_path, items)
 
 
@@ -80,7 +77,9 @@ def _get_volume_items(vol_path: Path) -> Optional[List[str]]:
     try:
         return [item.name for item in vol_path.iterdir()]
     except (OSError, PermissionError) as e:
-        logger.warning(f"Impossible de lire le contenu du volume {vol_path}: {e}")
+        logger.warning(
+            t("install_media.volume_permission_error", vol_path=vol_path, error=e)
+        )
         return None
 
 
@@ -108,7 +107,7 @@ def _has_expected_installation_files(items: List[str]) -> bool:
 
     for expected in expected_items:
         if any(expected.lower() in item for item in items_lower):
-            logger.debug(f"Fichier d'installation trouvé : {expected}")
+            logger.debug(t("install_media.files_found", expected=expected))
             return True
 
     return False
@@ -128,8 +127,13 @@ def _verify_by_volume_size(vol_path: Path, items: List[str]) -> bool:
         actual_size_mb = total_size / (1024 * 1024)
 
         logger.error(
-            f"Volume {vol_path} trop petit ({actual_size_mb:.1f} MB). "
-            f"Attendu au moins {min_size_mb} MB. Fichiers: {items}"
+            t(
+                "install_media.volume_too_small",
+                size_mb=actual_size_mb,
+                min_mb=min_size_mb,
+            )
+            + " "
+            + t("install_media.files_present", items=items)
         )
         print(
             t(
@@ -142,8 +146,12 @@ def _verify_by_volume_size(vol_path: Path, items: List[str]) -> bool:
         return False
 
     logger.warning(
-        f"Structure du volume {vol_path} non standard, mais taille acceptable: "
-        f"{total_size / (1024*1024):.1f} MB. Fichiers: {items[:5]}"
+        t(
+            "install_media.volume_standard_warning",
+            vol_path=vol_path,
+            total_size=total_size,
+            items=items,
+        )
     )
     return True
 
@@ -168,9 +176,7 @@ def _calculate_volume_size(vol_path: Path, max_files: int = 100) -> int:
     try:
         for item in vol_path.iterdir():
             if file_count >= max_files:
-                logger.debug(
-                    f"Limite de {max_files} fichiers atteinte, arrêt du calcul"
-                )
+                logger.debug(t("install_media.files_limit", max_files=max_files))
                 break
 
             try:
@@ -184,11 +190,13 @@ def _calculate_volume_size(vol_path: Path, max_files: int = 100) -> int:
                     total_size += size
                     file_count += count
             except (OSError, PermissionError) as e:
-                logger.debug(f"Impossible de lire {item}: {e}")
+                logger.debug(
+                    t("install_media.item_permission_error", item=item, error=e)
+                )
                 continue
 
     except (OSError, PermissionError) as e:
-        logger.warning(f"Erreur lors du calcul de taille de {vol_path}: {e}")
+        logger.warning(t("install_media.calculate_size_error", path=vol_path, error=e))
 
     return total_size
 
@@ -216,14 +224,13 @@ def _calculate_directory_size(dir_path: Path, max_files: int) -> tuple[int, int]
                 continue
 
     except (OSError, PermissionError) as e:
-        logger.warning(f"Erreur lors du calcul de la taille de {dir_path}: {e}")
+        logger.warning(t("install_media.calculate_size_error", path=dir_path, error=e))
 
     return total_size, file_count
 
 
 def create_install_media(installers: List[InstallerInfo]) -> None:
     """Crée les médias d'installation pour chaque installateur."""
-    logger.info("Début de la création des médias d'installation")
     print(t("install_media.creating"))
     print(t("install_media.duration_hint"))
 
@@ -253,7 +260,9 @@ def _validate_createinstallmedia_tool(tool_path: Path, installer_name: str) -> N
     if not tool_path.exists():
         _raise_install_error(
             installer_name,
-            f"Outil createinstallmedia introuvable: {tool_path}",
+            t("install_media.tool_missing", name=installer_name)
+            + " "
+            + t("install_media.tool_expected", path=tool_path),
             "install_media.tool_missing",
         )
 
@@ -275,13 +284,16 @@ def _validate_createinstallmedia_tool(tool_path: Path, installer_name: str) -> N
 
 def _prepare_volume(inst: InstallerInfo) -> Path:
     """Attend et localise le volume cible."""
-    logger.info(f"Installation de {inst['name']} sur {inst['volume']}...")
     print(t("install_media.installing", name=inst["name"]))
 
     if not wait_for_volume(inst["volume"]):
         _raise_install_error(
             inst["name"],
-            f"Timeout: le volume {inst['volume']} n'est pas monté après {MAX_VOLUME_WAIT_TIME}s",
+            t(
+                "install_media.timeout_volume",
+                volume=inst["volume"],
+                seconds=MAX_VOLUME_WAIT_TIME,
+            ),
             "install_media.timeout_volume",
             volume=inst["volume"],
             seconds=MAX_VOLUME_WAIT_TIME,
@@ -289,17 +301,20 @@ def _prepare_volume(inst: InstallerInfo) -> Path:
 
     try:
         vol_path = find_volume_path(inst["volume"], inst["name"])
-        logger.info(f"Volume réel trouvé: {vol_path}")
+        logger.info(t("install_media.volume_found", vol_path=vol_path))
     except FileNotFoundError:
         error_msg = t("install_media.volume_not_found", expected=inst["volume"])
-        logger.error(f"{error_msg} pour {inst['name']}")
         print(t("install_media.error_for_installer", msg=error_msg, name=inst["name"]))
         raise InstallationError(inst["name"], error_msg)
 
     if not vol_path.exists() or not vol_path.is_dir():
         _raise_install_error(
             inst["name"],
-            f"Le volume {vol_path} n'est pas accessible",
+            t(
+                "install_media.volume_not_accessible",
+                vol_path=vol_path,
+                name=inst["name"],
+            ),
             "install_media.volume_not_accessible",
             vol_path=vol_path,
         )
@@ -320,7 +335,7 @@ def _execute_createinstallmedia(
         "--nointeraction",
     ]
 
-    logger.info(f"Exécution de createinstallmedia pour {inst['name']}")
+    logger.info(t("install_media.tool_executable", {inst["name"]}))
 
     progress_rules = [
         ("erasing", 5, t("progress.erasing_volume")),
@@ -360,19 +375,17 @@ def _execute_createinstallmedia(
 
 def _verify_and_confirm_installation(vol_path: Path, installer_name: str) -> None:
     """Vérifie que l'installation s'est bien déroulée."""
-    logger.debug("Attente de la synchronisation du système de fichiers...")
+    logger.debug(t("install_media.installation_waiting"))
     time.sleep(2)
 
     if _verify_installation_success(vol_path):
-        logger.info(f"{installer_name} installé avec succès")
         print(t("install_media.success", name=installer_name))
         return
 
-    logger.debug("Première vérification échouée, nouvelle tentative...")
+    logger.debug(t("install_media.installation_verify_fail"))
     time.sleep(3)
 
     if _verify_installation_success(vol_path):
-        logger.info(f"{installer_name} installé avec succès")
         print(t("install_media.success", name=installer_name))
         return
 
@@ -385,7 +398,7 @@ def _log_command_output(output_lines: List[str], installer_name: str) -> None:
         return
 
     output = "\n".join(output_lines)
-    logger.debug(f"Sortie complète de createinstallmedia: {output}")
+    logger.debug({output})
 
     keywords = [
         "error",
@@ -403,12 +416,12 @@ def _log_command_output(output_lines: List[str], installer_name: str) -> None:
         line for line in output_lines if any(kw in line.lower() for kw in keywords)
     ]
 
+    logger.info(t("install_media.tool_exit", installer_name=installer_name))
+
     if important_lines:
-        logger.info(f"Sortie de createinstallmedia pour {installer_name}")
         for line in important_lines[:10]:
             logger.info(line)
     else:
-        logger.info(f"Dernières lignes de createinstallmedia pour {installer_name}")
         for line in output_lines[-5:]:
             logger.info(line)
 
@@ -418,7 +431,7 @@ def _handle_subprocess_error(
 ) -> None:
     """Gère les erreurs subprocess de manière structurée."""
     error_output = "\n".join(output_lines) if output_lines else ""
-    error_msg = f"Code de retour {error.returncode}"
+    error_msg = error.returncode
 
     help_messages = {
         -9: ("(SIGKILL - processus tué)", "install_media.sigkill_help"),
@@ -431,9 +444,7 @@ def _handle_subprocess_error(
     if error_output:
         error_msg += f": {error_output}"
 
-    logger.error(f"Échec de l'installation de {installer_name}: {error_msg}")
-    print(t("install_media.fail", name=installer_name))
-    print(t("install_media.return_code", code=error.returncode))
+    print(t("install_media.fail", name=installer_name, error=error.returncode))
 
     if help_key:
         print(t(help_key))
@@ -451,7 +462,6 @@ def _report_verification_failure(vol_path: Path, installer_name: str) -> None:
             [item.name for item in vol_path.iterdir()] if vol_path.exists() else []
         )
         error_msg = t("install_media.seems_failed")
-        logger.error(f"{error_msg} pour {installer_name}")
         print(
             t("install_media.error_for_installer", msg=error_msg, name=installer_name)
         )
@@ -464,9 +474,7 @@ def _report_verification_failure(vol_path: Path, installer_name: str) -> None:
         print(t("install_media.volume_path", path=vol_path))
         print(t("install_media.check_manually", path=vol_path))
         raise InstallationError(installer_name, error_msg)
-    except Exception as e:
-        error_msg = f"Impossible de vérifier le contenu du volume : {e}"
-        logger.error(f"{error_msg} pour {installer_name}")
+    except Exception as error_msg:
         print(
             t("install_media.error_for_installer", msg=error_msg, name=installer_name)
         )
@@ -477,6 +485,6 @@ def _raise_install_error(
     installer_name: str, error_msg: str, translation_key: str, **kwargs
 ) -> None:
     """Utilitaire pour lever une InstallationError avec logging cohérent."""
-    logger.error(f"{error_msg} pour {installer_name}")
+    logger.error(t(translation_key, name=installer_name, **kwargs))
     print(t(translation_key, name=installer_name, **kwargs))
     raise InstallationError(installer_name, error_msg)

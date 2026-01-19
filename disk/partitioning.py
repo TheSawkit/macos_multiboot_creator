@@ -13,7 +13,7 @@ from utils.size import (
     calculate_partition_size_bytes,
     format_size_for_diskutil,
 )
-from disk.detection import get_disk_info
+from disk.detection import DISKUTIL_PATH, get_disk_info
 
 logger = logging.getLogger(__name__)
 
@@ -44,96 +44,79 @@ def validate_partition_sizes(target_disk: str, installers: List[InstallerInfo]) 
 
         if total_needed_bytes > disk_size_bytes:
             logger.error(
-                f"Les partitions sont trop grandes: {total_needed_gb:.2f} GB nécessaires, "
-                f"{disk_size_gb:.2f} GB disponibles"
+                t(
+                    "disk.partition_fail_size_large",
+                    total_needed_gb=total_needed_gb,
+                    disk_size_gb=disk_size_gb,
+                )
             )
             raise ValueError(
-                f"Les partitions sont trop grandes pour le disque.\n"
-                f"   Espace nécessaire (partitions fixes) : {total_needed_gb:.2f} GB\n"
-                f"   Espace disponible : {disk_size_gb:.2f} GB\n"
-                f"   Il faut au moins {total_needed_gb:.2f} GB pour les partitions fixes."
+                t(
+                    "disk.partition_fail_size_large",
+                    total_needed_gb=total_needed_gb,
+                    disk_size_gb=disk_size_gb,
+                )
             )
 
         logger.info(
-            f"Validation réussie: {total_needed_gb:.2f} GB nécessaires pour les partitions fixes, "
-            f"{disk_size_gb:.2f} GB disponibles"
+            t(
+                "disk.partition_success_validate",
+                total_needed_gb=total_needed_gb,
+                disk_size_gb=disk_size_gb,
+            )
         )
     except (KeyError, TypeError) as e:
-        logger.warning(f"Impossible de valider les tailles de partitions: {e}")
+        logger.warning(t("disk.partition_fail_validate", error=e))
 
 
 def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
     """
     Partitionne le disque en volumes séparés pour chaque installateur.
 
-    Args:
-        target_disk: Chemin du disque à partitionner
-        installers: Liste des installateurs à installer
-
-    Raises:
-        CommandError: Si la commande de partitionnement échoue
-        CommandNotFoundError: Si diskutil n'est pas trouvé
-        ValueError: Si les tailles de partitions sont invalides
+    Orchestre trois phases :
+    1. Préparation de la commande et calculs
+    2. Exécution via diskutil
+    3. Gestion fine des erreurs (notamment disque occupé)
     """
-    logger.info(f"Début du partitionnement du disque {target_disk}")
     print(t("disk.partitioning"))
 
     validate_partition_sizes(target_disk, installers)
 
-    remaining_size_str = ""
-    if len(installers) > 1:
-        try:
-            disk_info = get_disk_info(target_disk)
-            disk_size_bytes = disk_info.get("TotalSize", 0)
+    partition_cmd = _build_partition_command(target_disk, installers)
 
-            total_fixed_partitions_bytes = sum(
-                calculate_partition_size_bytes(inst["size_bytes"])
-                for inst in installers[:-1]
-            )
+    try:
+        _execute_partition_command(partition_cmd)
+        logger.info(t("disk.partition_success"))
 
-            remaining_bytes = disk_size_bytes - total_fixed_partitions_bytes
-            remaining_gb = remaining_bytes / BYTES_PER_GB
+    except CommandError as e:
+        _handle_partition_error(e, target_disk)
 
-            if remaining_gb < 1:
-                remaining_mb = remaining_bytes / BYTES_PER_MB
-                remaining_size_str = f"{remaining_mb:.0f}M"
-            else:
-                remaining_size_str = f"{remaining_gb:.1f}G"
-        except (KeyError, TypeError) as e:
-            logger.warning(f"Impossible de calculer l'espace restant: {e}")
 
-    partition_cmd = ["diskutil", "partitionDisk", target_disk, "GPT"]
+def _build_partition_command(
+    target_disk: str, installers: List[InstallerInfo]
+) -> List[str]:
+    """Construit la liste des arguments pour la commande diskutil."""
+    cmd = [DISKUTIL_PATH, "partitionDisk", target_disk, "GPT"]
+
+    remaining_info = _get_remaining_space_info(target_disk, installers)
 
     for i, inst in enumerate(installers):
-        partition_cmd.extend(["JHFS+", inst["volume"]])
-        if i == len(installers) - 1:
-            partition_cmd.append("0b")
-            if remaining_size_str:
-                logger.info(
-                    f"{inst['name']}: dernière partition (espace restant: {remaining_size_str})"
-                )
-                print(
-                    t(
-                        "disk.partition_last_remaining",
-                        name=inst["name"],
-                        remaining=remaining_size_str,
-                    )
-                )
-            else:
-                logger.info(
-                    f"{inst['name']}: dernière partition (prend tout l'espace restant)"
-                )
-                print(t("disk.partition_last_all", name=inst["name"]))
+        is_last = i == len(installers) - 1
+
+        if is_last:
+            cmd.extend(["JHFS+", inst["volume"], "0b"])
+            _log_last_partition(inst["name"], remaining_info)
         else:
-            partition_size = format_size_for_diskutil(inst["size_bytes"])
-            partition_cmd.append(partition_size)
-            logger.info(f"{inst['name']}: partition de {partition_size}")
-            print(t("disk.partition_size", name=inst["name"], size=partition_size))
+            size_str = format_size_for_diskutil(inst["size_bytes"])
+            cmd.extend(["JHFS+", inst["volume"], size_str])
+            print(t("disk.partition_size", name=inst["name"], size=size_str))
 
-    logger.info(
-        f"Exécution de la commande de partitionnement: {' '.join(partition_cmd)}"
-    )
+    logger.info(f"{' '.join(cmd)}")
+    return cmd
 
+
+def _execute_partition_command(cmd: List[str]) -> None:
+    """Exécute la commande diskutil avec une barre de progression."""
     progress_rules = [
         ("unmounting", 10, t("progress.unmounting_disk")),
         ("unmount", 10, t("progress.unmounting_disk")),
@@ -146,72 +129,92 @@ def partition_disk(target_disk: str, installers: List[InstallerInfo]) -> None:
         ("complete", 100, t("progress.done")),
     ]
 
+    process, output_lines, progress_bar = run_command_with_progress(
+        cmd,
+        t("progress.partitioning"),
+        progress_rules,
+        time_estimate_seconds=60,
+    )
+
+    process.wait()
+    progress_bar.stop()
+    read_remaining_output(process, output_lines)
+
+    if process.returncode != 0:
+        raise CommandError(cmd, process.returncode, "\n".join(output_lines))
+
+
+def _handle_partition_error(e: CommandError, target_disk: str) -> None:
+    """Analyse l'erreur pour fournir des conseils contextuels (disque occupé)."""
+    error_output = e.stderr or ""
+
+    if "in use by process" in error_output or "Couldn't unmount" in error_output:
+        _suggest_solutions_for_busy_disk(target_disk, error_output)
+    else:
+        print(t("disk.partition_fail", error=e))
+        if error_output:
+            print(t("disk.partition_error_details", details=error_output))
+
+    raise e
+
+
+def _suggest_solutions_for_busy_disk(target_disk: str, error_output: str) -> None:
+    """Affiche les solutions détaillées quand le disque est occupé."""
+    from disk.management import _extract_process_info
+
+    process_name, process_id = _extract_process_info(error_output)
+
+    print(t("disk.partition_fail_in_use", target_disk=target_disk))
+
+    if process_name and process_id:
+        print(t("disk.proc_using", process_name=process_name, process_id=process_id))
+
+    print(t("disk.solutions"))
+    print(t("disk.solution_1"))
+    print(t("disk.solution_2"))
+    print(t("disk.solution_3"))
+
+    if process_name and process_id:
+        print(t("disk.solution_4_kill", process_id=process_id))
+
+    print(t("disk.solution_5_wait"))
+    print(t("disk.partitioning_blocked"))
+    print(t("disk.rerun_after_free"))
+
+
+def _get_remaining_space_info(target_disk: str, installers: List[InstallerInfo]) -> str:
+    """
+    Calcule l'espace restant estimé pour l'affichage.
+    Retourne une chaîne vide si le calcul échoue ou n'est pas pertinent.
+    """
+    if len(installers) <= 1:
+        return ""
+
     try:
-        process, output_lines, progress_bar = run_command_with_progress(
-            partition_cmd,
-            t("progress.partitioning"),
-            progress_rules,
-            time_estimate_seconds=60,
+        disk_info = get_disk_info(target_disk)
+        disk_size_bytes = disk_info.get("TotalSize", 0)
+
+        total_fixed_partitions_bytes = sum(
+            calculate_partition_size_bytes(inst["size_bytes"])
+            for inst in installers[:-1]
         )
 
-        process.wait()
-        progress_bar.stop()
+        remaining_bytes = disk_size_bytes - total_fixed_partitions_bytes
+        remaining_gb = remaining_bytes / BYTES_PER_GB
 
-        read_remaining_output(process, output_lines)
+        if remaining_gb < 1:
+            remaining_mb = remaining_bytes / BYTES_PER_MB
+            return f"{remaining_mb:.0f}M"
 
-        if process.returncode != 0:
-            error_output = "\n".join(output_lines)
+        return f"{remaining_gb:.1f}G"
+    except (KeyError, TypeError, Exception) as e:
+        logger.warning(t("disk.remaining_space_fail", error=e))
+        return ""
 
-            if (
-                "in use by process" in error_output
-                or "Couldn't unmount" in error_output
-            ):
-                from disk.management import _extract_process_info
 
-                process_name, process_id = _extract_process_info(error_output)
-
-                logger.error(
-                    f"Échec du partitionnement: le disque est utilisé par un processus"
-                )
-                print(t("disk.partition_fail_in_use", target_disk=target_disk))
-
-                if process_name and process_id:
-                    print(
-                        t(
-                            "disk.proc_using",
-                            process_name=process_name,
-                            process_id=process_id,
-                        )
-                    )
-
-                print(t("disk.solutions"))
-                print(t("disk.solution_1"))
-                print(t("disk.solution_2"))
-                print(t("disk.solution_3"))
-                if process_name and process_id:
-                    print(
-                        t("disk.solution_4_kill", process_id=process_id)
-                    )
-                print(t("disk.solution_5_wait"))
-                print(t("disk.partitioning_blocked"))
-                print(t("disk.rerun_after_free"))
-
-            raise CommandError(partition_cmd, process.returncode, error_output)
-
-        logger.info("Partitionnement terminé avec succès")
-    except (CommandError, CommandNotFoundError) as e:
-        error_already_displayed = False
-        if isinstance(e, CommandError) and e.stderr:
-            if "in use by process" in str(e.stderr) or "Couldn't unmount" in str(
-                e.stderr
-            ):
-                error_already_displayed = True
-
-        if not error_already_displayed:
-            logger.error(f"Échec du partitionnement: {e}")
-            print(t("disk.partition_fail", error=e))
-            if isinstance(e, CommandError) and e.stderr:
-                print(t("disk.partition_error_details", details=e.stderr))
-        else:
-            logger.error(f"Échec du partitionnement: {e}")
-        raise
+def _log_last_partition(name: str, remaining_info: str) -> None:
+    """Gère l'affichage spécifique pour la dernière partition."""
+    if remaining_info:
+        print(t("disk.partition_last_remaining", name=name, remaining=remaining_info))
+    else:
+        print(t("disk.partition_last_all", name=name))
