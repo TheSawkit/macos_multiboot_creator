@@ -36,16 +36,13 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
     """
     found = []
     app_path = Path(app_dir)
-    logger.info(f"Recherche des installateurs dans {app_dir}...")
     print(t("installer.search_installers", app_dir=app_dir))
 
     if not app_path.exists():
-        logger.error(f"Le répertoire {app_dir} n'existe pas")
         print(t("installer.dir_missing", app_dir=app_dir))
         sys.exit(1)
 
     if not app_path.is_dir():
-        logger.error(f"{app_dir} n'est pas un répertoire")
         print(t("installer.not_a_dir", app_dir=app_dir))
         sys.exit(1)
 
@@ -57,7 +54,6 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
                 if keyword in f.name and f.suffix == ".app" and "Install" in f.name
             ]
         except PermissionError:
-            logger.error(f"Permission refusée pour accéder à {app_dir}")
             print(t("installer.permission_denied", app_dir=app_dir))
             sys.exit(1)
 
@@ -65,23 +61,23 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
             continue
 
         if len(candidates) > 1:
-            logger.warning(
-                f"Plusieurs installateurs trouvés pour {name}: {[c.name for c in candidates]}. "
-                f"Utilisation du premier: {candidates[0].name}"
-            )
-            print(
-                t("installer.multiple_found", name=name, picked=candidates[0].name)
-            )
+            print(t("installer.multiple_found", name=name, picked=candidates[0].name))
 
         path = candidates[0]
         if path.is_dir():
-            logger.info(f"Calcul de la taille de {name}...")
+            logger.info(t("installer.size_calculate", name=name))
             size_bytes = get_directory_size(path)
             size_gb = size_bytes / BYTES_PER_GB
             size_with_margin = calculate_size_with_margin(size_bytes)
             size_with_margin_gb = size_with_margin / BYTES_PER_GB
             logger.info(
-                f"Trouvé: {name} -> {path} ({size_gb:.2f} GB, {size_with_margin_gb:.2f} GB avec marge)"
+                t(
+                    "installer.found_verbose",
+                    name=name,
+                    path=path,
+                    size_gb=size_gb,
+                    size_with_margin_gb=size_with_margin_gb,
+                )
             )
             print(t("installer.found", name=name))
             found.append(
@@ -93,11 +89,9 @@ def find_installers(app_dir: str = APP_DIR) -> List[InstallerInfo]:
                 )
             )
         else:
-            logger.warning(f"Chemin invalide pour {name}: {path}")
             print(t("installer.invalid_path", name=name, path=path))
 
     if not found:
-        logger.error("Aucun installateur trouvé")
         print(t("installer.none_found"))
         print(t("installer.download_mist"))
         sys.exit(1)
@@ -112,7 +106,6 @@ def display_size_summary(installers: List[InstallerInfo]) -> None:
     Args:
         installers: Liste des installateurs trouvés
     """
-    logger.info("Affichage du résumé des tailles")
     print(t("installer.size_summary"))
     for inst in installers:
         size_gb = inst["size_bytes"] / BYTES_PER_GB
@@ -142,5 +135,11 @@ def calculate_total_space_needed(installers: List[InstallerInfo]) -> int:
     total_needed_bytes = sum(
         calculate_size_with_margin(inst["size_bytes"]) for inst in installers
     )
-    logger.info(f"Espace total nécessaire: {total_needed_bytes / BYTES_PER_GB:.2f} GB")
+    logger.info(
+        t(
+            "installer.space_needed",
+            total_needed_bytes=total_needed_bytes,
+            BYTES_PER_GB=BYTES_PER_GB,
+        )
+    )
     return total_needed_bytes

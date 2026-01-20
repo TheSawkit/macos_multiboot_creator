@@ -50,12 +50,12 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
     Raises:
         CommandError: Si le démontage échoue et que le disque est utilisé par un processus
     """
-    logger.info(f"Démontage du disque {target_disk}...")
+    logger.info(t("disk.unmount", target_disk=target_disk))
     try:
         output = run_command(["diskutil", "unmountDisk", target_disk], capture=True)
         if output:
-            logger.info(f"Sortie de unmountDisk: {output}")
-        logger.info(f"Disque {target_disk} démonté avec succès")
+            logger.info(output)
+        logger.info(t("disk.unmount_success", target_disk=target_disk))
     except CommandError as e:
         error_msg = ""
         if e.stderr:
@@ -64,10 +64,6 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
 
         if "in use by process" in error_msg or "Couldn't unmount" in error_msg:
             process_name, process_id = _extract_process_info(error_msg)
-
-            logger.error(
-                f"Le disque {target_disk} ne peut pas être démonté car il est utilisé par un processus"
-            )
             print(t("disk.unmount_fail", target_disk=target_disk))
 
             if process_name and process_id:
@@ -100,7 +96,7 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
                 f"Disque utilisé par un processus. {error_msg}",
             ) from e
 
-        logger.warning(f"Impossible de démonter le disque {target_disk}: {e}")
+        logger.warning(e)
         print(t("disk.unmount_warning", target_disk=target_disk))
         print(t("disk.unmount_warning_more"))
 
@@ -115,18 +111,13 @@ def verify_disk_safety(target_disk: str) -> None:
     try:
         disk_info = get_disk_info(target_disk)
         if disk_info.get("Internal", False):
-            logger.warning(f"Le disque {target_disk} est marqué comme interne")
             print(t("disk.internal_warning", target_disk=target_disk))
             print(t("disk.internal_warning_more"))
-            confirm_internal = input(
-                t("disk.internal_confirm")
-            )
+            confirm_internal = input(t("disk.internal_confirm"))
             if confirm_internal != "YES":
-                logger.info("Opération annulée par l'utilisateur (disque interne)")
                 print(t("common.cancelled"))
                 sys.exit(0)
     except (CommandError, CommandNotFoundError, PlistParseError) as e:
-        logger.warning(f"Impossible de vérifier les informations du disque: {e}")
         print(t("disk.cannot_check_disk_info", error=e))
         print(t("disk.cannot_check_disk_info_more"))
 
@@ -146,7 +137,6 @@ def confirm_disk_erasure(target_disk: str, num_partitions: int) -> bool:
     print(t("disk.erase_warning_more", num_partitions=num_partitions))
     confirm = input(t("disk.erase_confirm"))
     if confirm != "YES":
-        logger.info("Opération annulée par l'utilisateur")
         print(t("common.cancelled"))
         return False
     return True
@@ -163,7 +153,7 @@ def restore_disk(target_disk: str) -> None:
         Cette fonction ne lève pas d'exception si la restauration échoue.
         Elle affiche simplement un avertissement.
     """
-    logger.info(f"Restauration du disque {target_disk} en cours...")
+    logger.info(t("disk.restore", target_disk=target_disk))
     try:
         unmount_disk(target_disk)
 
@@ -197,10 +187,8 @@ def restore_disk(target_disk: str) -> None:
             raise CommandError(restore_cmd, process.returncode, "\n".join(output_lines))
 
         if output_lines:
-            logger.info(f"Sortie de eraseDisk: {' '.join(output_lines)}")
-        logger.info(f"Disque {target_disk} restauré et reformaté en ExFAT avec succès")
+            logger.info(" ".join(output_lines))
         print(t("disk.restore_success"))
     except (CommandError, CommandNotFoundError) as e:
-        logger.warning(f"Impossible de restaurer le disque {target_disk}: {e}")
         print(t("disk.restore_fail", error=e))
         print(t("disk.restore_manual", target_disk=target_disk))

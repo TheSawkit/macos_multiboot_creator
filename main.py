@@ -54,7 +54,6 @@ def _handle_error(
         partitioning_started: Si True, le partitionnement a commencé
         cleanup_func: Fonction de nettoyage à appeler si nécessaire
     """
-    logger.error(f"Erreur {error_type}: {error}")
     print(t("main.error", error_type=error_type, error=error))
 
     if isinstance(error, CommandError) and error.stderr:
@@ -84,7 +83,6 @@ def main():
     def cleanup_disk_if_needed():
         """Nettoie le disque si le partitionnement a commencé."""
         if partitioning_started and target_disk:
-            logger.info(f"Nettoyage du disque {target_disk} en cours...")
             restore_disk(target_disk)
 
     try:
@@ -109,11 +107,9 @@ def main():
         partition_disk(target_disk, installers)
         create_install_media(installers)
 
-        logger.info("Création de la clé USB multiboot terminée avec succès")
         print(t("main.success"))
 
     except KeyboardInterrupt:
-        logger.debug("Interruption par l'utilisateur (Ctrl+C)")
         print(t("main.interrupted"))
         cleanup_disk_if_needed()
         handle_error_with_disk_info(None, target_disk)
@@ -151,7 +147,7 @@ def main():
         )
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Erreur inattendue: {e}", exc_info=True)
+        logger.error(t("main.error_unexpected", error=e), exc_info=True)
         _handle_error(
             e, "inattendue", target_disk, partitioning_started, cleanup_disk_if_needed
         )

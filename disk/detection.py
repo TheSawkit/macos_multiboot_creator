@@ -32,7 +32,7 @@ def list_external_disks() -> List[Tuple[str, str]]:
     Returns:
         Liste de tuples (device_path, description) pour chaque disque externe.
     """
-    logger.info("Recherche des disques externes...")
+    logger.info(t("disk.search"))
     try:
         output = run_command([DISKUTIL_PATH, "list", "-plist"])
         data = parse_plist(output)
@@ -117,7 +117,7 @@ def select_disk(disks: List[Tuple[str, str]]) -> str:
         validate_choice,
         t("disk.invalid_range", max=len(disks)),
     )
-    logger.info(f"Disque sélectionné: {target_disk}")
+    logger.info(t("disk.select_target", target_disk=target_disk))
     return target_disk
 
 
@@ -189,10 +189,10 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
     """
     expected_path = Path(f"/Volumes/{expected_name}")
     if expected_path.exists() and _is_volume_mounted(expected_path, expected_name):
-        logger.info(f"Volume trouvé avec le nom attendu: {expected_path}")
+        logger.info(t("disk.volume_found", expected_path=expected_path))
         return expected_path
 
-    logger.info(f"Recherche du volume pour {installer_name} dans /Volumes/...")
+    logger.info(t("disk.volume_search", installer_name=installer_name))
     volumes_dir = Path("/Volumes")
 
     if not volumes_dir.exists():
@@ -207,7 +207,7 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
         vol_name_lower = vol_path.name.lower()
         if expected_name.lower() in vol_name_lower:
             if _is_volume_mounted(vol_path, vol_path.name):
-                logger.info(f"Volume trouvé par nom attendu: {vol_path}")
+                logger.info(t("disk.volume_found_expected_name", vol_path=vol_path))
                 return vol_path
 
         meaningful_keywords = [
@@ -216,7 +216,7 @@ def find_volume_path(expected_name: str, installer_name: str) -> Path:
         if meaningful_keywords:
             if any(kw in vol_name_lower for kw in meaningful_keywords):
                 if _is_volume_mounted(vol_path, vol_path.name):
-                    logger.info(f"Volume trouvé par mots-clés: {vol_path}")
+                    logger.info(t("disk.volume_found_keywords", vol_path=vol_path))
                     return vol_path
 
     raise FileNotFoundError(f"{installer_name} (expected: {expected_name})")
@@ -235,13 +235,17 @@ def wait_for_volume(volume_name: str, max_wait: int = MAX_VOLUME_WAIT_TIME) -> b
     """
     vol_path = Path(f"/Volumes/{volume_name}")
     wait_start = time.time()
-    logger.info(f"Attente du montage du volume {volume_name}...")
+    logger.info(t("disk.volume_mount_waiting", volume_name=volume_name))
 
     while True:
         elapsed_time = time.time() - wait_start
         if elapsed_time > max_wait:
             logger.error(
-                f"Timeout: le volume {volume_name} n'est pas monté après {max_wait}s"
+                t(
+                    "disk.volume_mount_timeout",
+                    volume_name=volume_name,
+                    max_wait=max_wait,
+                )
             )
             return False
 
@@ -276,7 +280,7 @@ def _is_volume_mounted(vol_path: Path, volume_name: str) -> bool:
             timeout=5,
         )
         if result.returncode == 0 and "Mounted" in result.stdout:
-            logger.info(f"Volume {volume_name} monté avec succès")
+            logger.info(t("disk.volume_mount_success", volume_name=volume_name))
             return True
     except (OSError, subprocess.TimeoutExpired):
         pass
