@@ -4,6 +4,7 @@ Gestion des opérations sur les disques (montage, démontage, effacement).
 
 import logging
 import re
+import shutil
 import sys
 from typing import Optional, Tuple
 
@@ -16,7 +17,7 @@ from utils.commands import (
     run_command,
 )
 from utils.progress import run_command_with_progress
-from disk.detection import get_disk_info
+from disk.detection import DISKUTIL_PATH, get_disk_info
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
     """
     logger.info(t("disk.unmount", target_disk=target_disk))
     try:
-        output = run_command(["diskutil", "unmountDisk", target_disk], capture=True)
+        output = run_command([DISKUTIL_PATH, "unmountDisk", target_disk], capture=True)
         if output:
             logger.info(output)
         logger.info(t("disk.unmount_success", target_disk=target_disk))
@@ -91,7 +92,7 @@ def unmount_disk(target_disk: str, force: bool = False) -> None:
             print(t("disk.rerun_after_free"))
 
             raise CommandError(
-                ["diskutil", "unmountDisk", target_disk],
+                [DISKUTIL_PATH, "unmountDisk", target_disk],
                 e.returncode,
                 f"Disque utilisé par un processus. {error_msg}",
             ) from e
@@ -157,7 +158,7 @@ def restore_disk(target_disk: str) -> None:
     try:
         unmount_disk(target_disk)
 
-        restore_cmd = ["diskutil", "eraseDisk", "ExFAT", "USB_DISK", target_disk]
+        restore_cmd = [DISKUTIL_PATH, "eraseDisk", "ExFAT", "USB_DISK", target_disk]
 
         progress_rules = [
             ("unmounting", 10, t("progress.unmounting_disk")),
