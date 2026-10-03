@@ -2,7 +2,6 @@
 Gestion de la création des médias d'installation.
 """
 
-from gettext import install
 import logging
 import subprocess
 import time
